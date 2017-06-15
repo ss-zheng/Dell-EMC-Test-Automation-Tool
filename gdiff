@@ -1,0 +1,71 @@
+#!/bin/bash 
+
+function defineVariables {
+	OPTS_FOUND=0
+	ORIG_SUFFIX=".orig.ksh"
+	DIFF_SUFFIX=".diff"
+	TRACK=".track"
+	TMP="tmp"
+}
+
+function mydiff {
+	NAME=$1
+	trimed=`echo $NAME | cut -d '.' -f 1`
+	if [ -e $NAME ]; then
+		if [ -e ${trimed}${ORIG_SUFFIX} ]; then
+			diff "${NAME}" "${trimed}${ORIG_SUFFIX}" > "${trimed}${DIFF_SUFFIX}"
+			if [ $? = 0 ]; then
+				echo "No difference found in bewteen "${NAME}" and "${trimed}${ORIG_SUFFIX}"" >&2
+			fi
+		else
+			echo "${trimed}${ORIG_SUFFIX}" does not exist >&2
+			exit 1
+		fi
+	else
+		echo "$NAME does not exist" >&2
+		exit 1
+	fi
+}
+
+function strongDiff {
+	mkdir $TMP
+	for key in `cat $TRACK | grep -v "^#"`; do
+		# gdiff default ignore .orig.ksh
+		ls | grep $key | grep -v "\.orig\.ksh$" > $TMP/diff_list.txt
+		if [ $? = 0 ]; then
+			for file in `cat $TMP/diff_list.txt`; do
+				mydiff $file
+			done
+		fi
+	done
+	rm -rf $TMP
+}
+
+#-------------------------------- MAIN -----------------------------------
+
+defineVariables
+	
+if [ $# != 0 ]; then
+	while getopts ":a" opt; do
+		OPTS_FOUND=1
+		case $opt in
+			a)
+				strongDiff
+				exit 0
+				;;
+			\?)
+				echo "Invalid option: -$OPTARG" >&2
+				exit 1
+				;;
+		esac
+	done
+fi
+
+if [ $OPTS_FOUND = 0 ]; then
+   if [ $# = 0 ]; then
+	   echo "Missing file name" >&2
+	   exit 1
+   else 
+	   mydiff $1
+   fi
+fi

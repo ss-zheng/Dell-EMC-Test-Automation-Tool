@@ -1,0 +1,128 @@
+#!/bin/bash
+
+function defineVariables {
+	ROOT_PATH="/space1/nmda/automation/" # set as root path
+	PUT_PATH="${ROOT_PATH}scripts/"
+	REMOTE=$USER'@'$MACHINE 
+	TMP="tmp"
+	OPTS_FOUND=0
+}
+
+function putfile {
+	scp $1 ${REMOTE}:$2
+}
+
+function strongPut {
+	NAME=$1
+	if [ -e "${NAME}.ksh" ]; then
+		if [ -e "${NAME}.orig.ksh" ]; then
+			diff "${NAME}.ksh" "${NAME}.orig.ksh" > "${NAME}.diff"
+			if [ $? = 0 ]; then
+				echo "no difference found" >&2
+				exit 1
+			elif [ $? = 1 ]; then
+				putfile "${NAME}.ksh" $PUT_PATH
+				putfile "${NAME}.orig.ksh" $PUT_PATH
+				putfile "${NAME}.diff" $PUT_PATH
+			fi
+		else
+			echo ".orig.ksh file does not exist" >&2
+			exit 1
+		fi	
+	else 
+		echo ".ksh file does not exist" >&2
+		exit 1
+	fi
+}
+
+function fuzzyPut {
+	KEYWORD=$1
+	mkdir $TMP
+	LIST="$TMP/put_list.txt"
+	ls | grep "$KEYWORD" > $LIST
+	if [ $? != 0 ]; then
+		echo "no such file matches keyword: $KEYWORD"
+		rm -rf $TMP
+		exit 1
+	fi
+	for file in $(cat $LIST); do
+		putfile "$file" $PUT_PATH
+	done
+	rm -rf $TMP
+}
+	
+#-------------------------------- MAIN -----------------------------------
+
+. machine.cfg
+defineVariables
+
+if [ $# != 0 ]; then
+	while getopts ":a:f:hnst" opt; do
+		OPTS_FOUND=1
+		case $opt in
+			a)
+				echo "file: $OPTARG"
+				echo "path: $PUT_PATH"
+				strongPut $OPTARG
+				exit 0
+				;;
+			f)
+				echo "keyword: $OPTARG"
+				echo "path: $PUT_PATH"
+				fuzzyPut $OPTARG
+				exit 0
+				;;
+			h)
+				echo "-a: Creates \.diff file and puts all three files"
+				echo "-f: fuzzy put"
+				echo "-h: help"
+				echo "-n: change put path under nmda dir"
+				echo "-s: put script back"
+				echo "-t: change put path under test dir"
+				;;
+			n) 
+				OPTS_FOUND=2
+				PUT_PATH="${PUT_PATH}nmda/"
+				;;
+			s) 
+				echo "Do you really want to override script dir? (y/n)" >&2 
+				CHOICE='y'
+				read CHOICE
+				if [ $CHOICE = 'y' ]; then
+					scp -r scripts ${REMOTE}:$ROOT_PATH
+				fi
+				exit 0
+				;;
+			t) 
+				OPTS_FOUND=2
+				PUT_PATH="${PUT_PATH}${DB}/"
+				;;
+			\?)
+				echo "Invalid option: -$OPTARG" >&2
+				exit 1
+				;;
+			:) 
+				echo "Option -$OPTARG requires an argument." >&2
+				exit 1
+				;;
+		esac
+	done
+fi
+
+if [ $OPTS_FOUND = 0 ]; then
+	if [ $# = 0 ]; then
+		echo "Please specify a file" >&2
+		exit 1
+	fi
+	echo "path: $PUT_PATH"
+	putfile $1 $PUT_PATH
+elif [ $OPTS_FOUND = 2 ]; then
+	echo "path: $PUT_PATH"
+	putfile $2 $PUT_PATH
+fi
+
+exit 0
+	
+
+
+	

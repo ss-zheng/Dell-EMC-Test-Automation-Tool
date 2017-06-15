@@ -1,0 +1,107 @@
+#!/bin/bash
+
+function defineVariables {
+	ROOT_PATH="/space1/nmda/automation/" # set as root path
+	FETCH_FROM="${ROOT_PATH}scripts/"
+	REMOTE=$USER'@'$MACHINE 
+	TMP="tmp"
+	OPTS_FOUND=0
+}
+
+function fetchfile {
+	file=$1
+	fetch_path=$2
+	scp ${REMOTE}:${fetch_path}${file} .
+}
+
+function strongFetch {
+	NAME=$1
+	ORIG_NAME="`echo $NAME | cut -d '.' -f 1`"".orig.ksh"
+	fetchfile $NAME $FETCH_FROM
+	cp $NAME $ORIG_NAME
+}
+
+function fuzzyFetch {
+	KEYWORD=$1
+	mkdir $TMP
+	LIST="$TMP/fetch_list.txt"
+	ssh ${REMOTE} "cd $FETCH_FROM && ls | grep "$KEYWORD"" > $LIST
+	if [ $? != 0 ]; then
+		echo "no such file matches keyword: $KEYWORD"
+		rm -rf $TMP
+		exit 1
+	fi
+	for file in $(cat $LIST); do
+		fetchfile "$file" $FETCH_FROM
+	done
+	rm -rf $TMP
+}
+	
+#-------------------------------- MAIN -----------------------------------
+
+. machine.cfg
+defineVariables
+
+if [ $# != 0 ]; then
+	while getopts ":a:f:hnst" opt; do
+		OPTS_FOUND=1
+		case $opt in
+			a)
+				echo "file: $OPTARG"
+				echo "path: $FETCH_FROM"
+				strongFetch $OPTARG
+				exit 0
+				;;
+			f)
+				echo "keyword: $OPTARG"
+				echo "path: $FETCH_FROM"
+				fuzzyFetch $OPTARG
+				exit 0
+				;;
+			h)
+				echo "-a: fetch file and create .orig.ksh"
+				echo "-f: fuzzy fetch"
+				echo "-h: help"
+				echo "-n: change fetch path under nmda dir"
+				echo "-s: fetch script"
+				echo "-t: change fetch path under test dir"
+				;;
+			n) 
+				OPTS_FOUND=2
+				FETCH_FROM="${FETCH_FROM}nmda/"
+				;;
+			s) 
+				echo "Get scripts dir" >&2 
+				echo "path: $ROOT_PATH"
+				scp -r ${REMOTE}:$ROOT_PATH"/scripts" .
+				exit 0
+				;;
+			t) 
+				OPTS_FOUND=2
+				FETCH_FROM="${FETCH_FROM}${DB}/"
+				;;
+			\?)
+				echo "Invalid option: -$OPTARG" >&2
+				exit 1
+				;;
+			:) 
+				echo "Option -$OPTARG requires an argument." >&2
+				exit 1
+				;;
+		esac
+	done
+fi
+
+if [ $OPTS_FOUND = 0 ]; then
+	if [ $# = 0 ]; then
+		echo "Please specify a file" >&2
+		exit 1
+	fi
+	echo "path: $FETCH_FROM"
+	fetchfile $1 $FETCH_FROM
+elif [ $OPTS_FOUND = 2 ]; then
+	echo "path: $FETCH_FROM"
+	fetchfile $2 $FETCH_FROM
+fi
+
+exit 0
